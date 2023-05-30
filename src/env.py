@@ -1,5 +1,7 @@
 from gym import Env
 from gym.spaces import MultiDiscrete, Box
+from src.viz import StarViz
+from src.planets import Planet
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecFrameStack, DummyVecEnv
@@ -7,7 +9,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_checker import check_env
 
 import numpy as np
-
+from typing import List
 
 class spaceEnv(Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 2}
@@ -74,53 +76,7 @@ class spaceEnv(Env):
             return self._render_frame()
 
     def _render_frame(self):
-       
-
-        canvas = pygame.Surface((self.window_size, self.window_size))
-        canvas.fill((255, 255, 255))
-        pix_square_size = (
-            self.window_size / self.size
-        )  # The size of a single grid square in pixels
-
-        # Now we draw the planets
-        for planet in self.planets:
-            pygame.draw.circle(
-                canvas,
-                (0, 0, 255),
-                (planet.position + 0.5) * pix_square_size,
-                pix_square_size / 3,
-            )
-
-        # Finally, add some gridlines
-        for x in range(self.size + 1):
-            pygame.draw.line(
-                canvas,
-                0,
-                (0, pix_square_size * x),
-                (self.window_size, pix_square_size * x),
-                width=3,
-            )
-            pygame.draw.line(
-                canvas,
-                0,
-                (pix_square_size * x, 0),
-                (pix_square_size * x, self.window_size),
-                width=3,
-            )
-
-        if self.render_mode == "human":
-            # The following line copies our drawings from `canvas` to the visible window
-            self.window.blit(canvas, canvas.get_rect())
-            pygame.event.pump()
-            pygame.display.update()
-
-            # We need to ensure that human-rendering occurs at the predefined framerate.
-            # The following line will automatically add a delay to keep the framerate stable.
-            self.clock.tick(self.metadata["render_fps"])
-        else:  # rgb_array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
+        pass
     
     def reset(self):
         self.state: np.ndarray = np.array(
