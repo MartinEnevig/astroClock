@@ -4,11 +4,12 @@ import math
 import numpy as np
  
 class Planet:
-    def __init__(self, name: str, position: np.array, trajectory: List):
+    def __init__(self, name: str, starting_position: np.ndarray, trajectory: List):
         self.name: str = name
         self.trajectory: List = trajectory
         self.planets: List[Planet] = []
-        self.position: np.ndarray = position
+        self.starting_position: np.ndarray = starting_position
+        self.position: np.ndarray = starting_position
         self.ideal_postion: np.ndarray = None
         self.next_position: np.ndarray = None
         self.distance_to_other_planets: List[np.ndarray] = []
@@ -35,12 +36,16 @@ class Planet:
                 dist_dict[planet.name] = distance
         return dist_dict
 
-    def get_next_position(self, action) -> np.ndarray:
+    def get_next_position(self, action: int) -> np.ndarray:
         deviation = self.get_deviation(action)
         if self.deviation < 10:
             self.deviation += deviation
-        next_y: np.float32 = self.trajectory[self.current_step+1][1] + self.deviation
-        next_position = np.array([self.current_step+1, next_y], dtype=np.float32)
+
+        if self.current_step < len(self.trajectory) - 1:
+            next_y: np.float32 = self.trajectory[self.current_step+1][1] + self.deviation
+            next_position = np.array([self.current_step+1, next_y], dtype=np.float32)
+        else:
+            next_position = self.starting_position
         return next_position
 
     def update_current_step(self):
@@ -60,6 +65,6 @@ class Planet:
         distance: np.float32 = math.dist(self.position, self.ideal_postion)
         return distance
 
-    def update_position(self, action):
+    def update_position(self, action: int):
         self.position = self.get_next_position(action)
     
