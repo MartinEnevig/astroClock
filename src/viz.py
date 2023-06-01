@@ -1,6 +1,6 @@
 import matplotlib
 from matplotlib import pyplot as plt
-from src.planets import Planet
+from planets import Planet
 from typing import List, Dict
 import time
 
@@ -13,11 +13,12 @@ class StarViz:
         self.earthplot = self.make_earthplot()
         self.venusplot = self.make_venusplot()
         plt.ion()
+        plt.show()
 
     def get_fig(self):
         fig = plt.figure()
-        plt.xlim(self.max_and_min["min_x"], self.get_max_and_min["max_x"])
-        plt.ylim(self.max_and_min["min_y"], self.get_max_and_min["max_y"])
+        plt.xlim(self.max_and_min["min_x"], self.max_and_min["max_x"])
+        plt.ylim(self.max_and_min["min_y"], self.max_and_min["max_y"])
         return fig
     
     def get_max_and_min(self) -> Dict[str, int]:
@@ -51,7 +52,7 @@ class StarViz:
         return positions
     
     def make_earthplot(self):
-        earthPlot, = self.sub.plot(self.planets[1].position[0], self.planets[1].position[1, 'bo'])
+        earthPlot, = self.sub.plot(self.planets[1].position[0], self.planets[1].position[1], 'bo')
         return earthPlot
 
     def make_venusplot(self):

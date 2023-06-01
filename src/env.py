@@ -1,7 +1,7 @@
 from gym import Env
 from gym.spaces import MultiDiscrete, Box
-from src.viz import StarViz
-from src.planets import Planet
+from viz import StarViz
+from planets import Planet
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecFrameStack, DummyVecEnv
@@ -12,7 +12,7 @@ import numpy as np
 from typing import List
 
 class spaceEnv(Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 2}
+    metadata = {"render_modes": ["human"], "render_fps": 2}
     
     def __init__(self, planets: List[Planet], render_mode: str) -> None:
         self.action_space = MultiDiscrete([3, 3])
@@ -26,26 +26,14 @@ class spaceEnv(Env):
                 ], dtype=np.float32
             )
         self.planets = planets
-        self.size: int = self.calculate_size()
         self.current_step = 0
         self.visualizer = StarViz(planets=self.planets)
         self.clock = None
     
-    def calculate_size(self) -> int:
-        x_positions = []
-        y_positions = []
-        for planet in self.planets:
-            for position in planet.trajectory:
-                x_positions.append(np.abs(position[0]))
-                y_positions.append(np.abs(position[1]))
-
-        return round(max([max(x_positions), max(y_positions)])) + 200
     
     def step(self, action: np.ndarray):
         self.state = self.calculate_state(action)
         obs: np.ndarray = self.state
-        if self.render_mode=="human":
-            self._render_frame()
         reward = self.calculate_reward()
         self.current_step+=1
         self.update_planet_steps()
@@ -72,11 +60,11 @@ class spaceEnv(Env):
         return obs, reward, done, info
 
     def render(self):
-        if self.render_mode == "rgb_array":
+        if self.render_mode == "human":
             return self._render_frame()
 
     def _render_frame(self):
-        pass
+        self.visualizer.update_plot(planetas=self.planets)
     
     def reset(self):
         self.state: np.ndarray = np.array(
