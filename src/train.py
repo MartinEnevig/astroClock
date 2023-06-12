@@ -1,17 +1,13 @@
 import os
 from stable_baselines3 import PPO
 from env import spaceEnv
-from planets import Planet
-from trajectories import PlanetInit
 from stable_baselines3.common.evaluation import evaluate_policy
 
-planetmaker = PlanetInit()
-planets = planetmaker()
-env =spaceEnv(planets=planets, render_mode=None)
+env =spaceEnv(render_mode=None)
 
 log_path = os.path.join('Training', 'Logs')
 model = PPO("MlpPolicy", env, verbose=1, tensorboard_log=log_path)
-model.learn(total_timesteps=1000000)
+model.learn(total_timesteps=100000)
 
 
 model.save('PPO')
