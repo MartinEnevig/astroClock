@@ -1,141 +1,146 @@
 from gym import Env
-from gym.spaces import MultiDiscrete, Box
-from viz import StarViz
-from planets import Planet
-
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import VecFrameStack, DummyVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
+from gym.spaces import Box
+#from viz import StarViz
+# from stable_baselines3 import PPO
+# from stable_baselines3.common.vec_env import VecFrameStack, DummyVecEnv
+# from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_checker import check_env
 
 import numpy as np
-from typing import List
+import const as c
+from typing import List, Optional
 
 class spaceEnv(Env):
     metadata = {"render_modes": ["human"], "render_fps": 2}
     
-    def __init__(self, planets: List[Planet], render_mode: str) -> None:
-        self.action_space = MultiDiscrete([3, 3])
-        self.observation_space = Box(low=-100.0, high=100.0, shape=(2, 4), dtype=np.float32)
+    def __init__(self, render_mode: Optional[str]=None) -> None:
+        # Load planet data from files
+        with open('data/data1.npy', 'rb') as file:
+            self.PositionDataPolar = np.load(file)   # Numpy array of body positions in polar coordinates. r,v (5206896, 10, 2)
+            self.PositionDataXY = np.load(file)      # Numpy array of body positions in cortesian coordinates. x,y (5206896, 10, 2)
+            self.TimeData = np.load(file)            # Numpy array of time stamp. year, month, day, hour, minute (5206896, 5)
+        with open('data/data2.npy', 'rb') as file:
+            self.StartPositions = np.load(file)      # Numpy array of allowed start positions = no initial collision (12511,)
+            self.MinDistSquared = np.load(file)      # Numpy array of 'minimum distance squared' between planets (10, 10)
+        # Define action space
+        self.action_space = Box(
+            low=np.array([-1.0, -1.0]),
+            high=np.array([1.0, 1.0]), 
+            dtype=np.float32
+        )
+        # Define observation space
+        # Current position [x,y,r,v] , Target position [x,y,r,v]
+        self.observation_space = Box(
+            low=np.array(2*[-c.BOARD_RADIUS, -c.BOARD_RADIUS, 0.0, 0.0 ]),
+            high=np.array(2*[c.BOARD_RADIUS, c.BOARD_RADIUS, c.BOARD_RADIUS, 2*np.pi]), 
+            dtype=np.float32
+        )
+
         self.render_mode = render_mode
-        #set starting state
-        self.state: np.ndarray = np.array(
-                        [
-                    [0.0, 4.8, 4.1, 0.0],
-                    [0.0, 8.9 , 4.1, 0.0]          
-                ], dtype=np.float32
-            )
-        self.planets = planets
+
+    def reset(self):
+        # Reset step counter
         self.current_step = 0
-        self.visualizer = StarViz(planets=self.planets)
-        self.clock = None
-    
+        # Select random time index without collition
+        self.current_time_index = np.random.choice(self.StartPositions)
+        # Set current positions [x,y,r,v]
+        self.current_positions = np.concatenate(
+            (
+            self.PositionDataXY[self.current_time_index],
+            self.PositionDataPolar[self.current_time_index]
+            ), 
+            axis=1
+            ) 
+        # Next time index
+        self.current_time_index += 1
+        # Set target positions [x,y,r,v]
+        self.target_positions = np.concatenate(
+            (
+            self.PositionDataXY[self.current_time_index],
+            self.PositionDataPolar[self.current_time_index]
+            ), 
+            axis=1
+            ) 
+        # Select current planet
+        self.it_planets = self.calc_planet_order(self.current_positions)
+        self.current_planet = next(self.it_planets)
+        # Update state
+        self.state = np.concatenate(
+            (
+            self.current_positions[self.current_planet],
+            self.target_positions[self.current_planet]
+            )
+        )
+        return self.state  
     
     def step(self, action: np.ndarray):
-        self.state = self.calculate_state(action)
-        obs: np.ndarray = self.state
-        reward = self.calculate_reward()
-        self.current_step+=1
-        self.update_planet_steps()
-        done = self.is_done()
-        info = {
-            "venus": {
-                "name": self.planets[0].name,
-                "position": self.planets[0].position,
-                "distance_to_nearest": self.planets[0].distance_to_nearest_planet,
-                "deviation": self.planets[0].deviation,
-                "current_step": self.planets[0].current_step
-            },
-    
-            "earth": {
-                "name": self.planets[1].name,
-                "position": self.planets[1].position,
-                "distance_to_nearest": self.planets[1].distance_to_nearest_planet,
-                "deviation": self.planets[1].deviation,
-                "current_step": self.planets[1].current_step
-            }, 
-            "step no": self.current_step
-        }
-
-        return obs, reward, done, info
-
-    def render(self):
-        if self.render_mode == "human":
-            return self._render_frame()
-
-    def _render_frame(self):
-        self.visualizer.update_plot(planetas=self.planets)
-    
-    def reset(self):
-        self.state: np.ndarray = np.array(
-                        [
-                    [0.0, 4.8, 4.1, 0.0],
-                    [0.0, 8.9 , 4.1, 0.0]            
-                ],
-                dtype=np.float32
+        self.current_step += 1
+        # Update current position of selected planet 
+        r = self.current_positions[self.current_planet, 2]
+        v = self.current_positions[self.current_planet, 3] 
+        r += action[0] * 100.0              # +/- 100 mm
+        v += (action[1] + 1.0) * 0.05       # + 0.1 rad
+        if v >= 2.0*np.pi:
+            v -= 2.0*np.pi
+        x = r * np.sin(v)
+        y = r * np.cos(v)
+        self.current_positions[self.current_planet] = [x,y,r,v]
+        # calculate dist-squared to target
+        x_target = self.target_positions[self.current_planet, 0]
+        y_target = self.target_positions[self.current_planet, 1]
+        distSq = (x-x_target)**2 + (y-y_target)**2
+        # Next time index
+        self.current_time_index += 1
+        isOutOfTime = bool(self.current_time_index >= len(self.PositionDataXY)-2)
+            
+        # Set new target positions [x,y,r,v]
+        self.target_positions = np.concatenate(
+            (
+            self.PositionDataXY[self.current_time_index],
+            self.PositionDataPolar[self.current_time_index]
+            ), 
+            axis=1
+            ) 
+        # Calculate reward
+        reward = -distSq
+        # Done?
+        isTooFarFromTarget = bool(distSq >= 90000)
+        isOutsideBoard = bool(r > c.BOARD_RADIUS)
+        done = isTooFarFromTarget or isOutsideBoard or isOutOfTime
+        # Update state
+        self.state = np.concatenate(
+            (
+            self.current_positions[self.current_planet],
+            self.target_positions[self.current_planet]
             )
-        self.current_step = 0
-        for planet in self.planets:
-            planet.position = planet.starting_position
-            planet.deviation = 0.0
-            planet.current_step = 0
-        return self.state
+        )
 
-    def calculate_reward(self):
-        reward = 0
-        for planet in self.planets:
-            if np.abs(planet.distance_to_nearest_planet) > 5:
-                reward+=0
-                #print("distance_greater than five")
-            else:
-                reward-=planet.distance_to_nearest_planet
-                #print("distance less than five")
-                #print(f"distanceto_idealposition for {planet} is {planet.distance_to_ideal_position}")
-            if np.abs(planet.distance_to_ideal_position) > 0:
-                reward-=np.abs(planet.distance_to_ideal_position)
-                #print("distance to ideal less than five")
-            else:
-                reward+=1
-            if np.abs(planet.distance_to_nearest_planet) < 0.1:
-                print("collision")
-                reward-=100
-                
-        return reward
+        info = {}
+        return self.state, reward, done, info
 
-    def calculate_state(self, action: np.ndarray) -> np.ndarray:
-        positions = []
-        for action_number, planet in enumerate(self.planets):
-            planet.update_position(action[action_number])
-            positions.append(planet.position)
-            planet.update_current_step()
 
-        distances = []
-        for planet in self.planets:
-            distance_to_nearest_planet: np.float32 = min(planet.get_distance_to_other_planets().values())      
-            planet.distance_to_nearest_planet = distance_to_nearest_planet
-            distance_to_ideal_position = planet.get_distance_to_ideal_position()
-            distances.append([
-                distance_to_nearest_planet,
-                distance_to_ideal_position
-            ])
-        
-        state_list = []
-        for i in range(len(self.planets)):
-            row = [positions[i][0], positions[i][1], distances[i][0], distances[i][1]]
-            state_list.append(row)
-        
-        return np.array(state_list, dtype=np.float32)
+    def calc_planet_order(self, polarPositions):
+        return iter(np.argsort(polarPositions[:,3]))
+
+
     
-    def update_planet_steps(self):
-        for planet in self.planets:
-            if planet.current_step < len(planet.trajectory) - 1:
-                planet.current_step = self.current_step
+    # def calcDistSquared(posXY1, posXY2):
+    #     return (posXY1[0]-posXY2[0])**2 + (posXY1[1]-posXY2[1])**2
+
+    # def calcDist(posXY1, posXY2):
+    #     return np.sqrt(calcDistSquared(posXY1, posXY2))
+
+    # def collisionCheck(posXY1, posXY2, minDistSquared):
+    #     return (calcDistSquared(posXY1, posXY2) < minDistSquared)
+
+    # def collisionCheckAll(bdyList, MinDistSquared):
+    #     for i in range(len(bdyList)-1):
+    #         for j in range(i+1, len(bdyList)):
+    #             if collisionCheck(bdyList[i], bdyList[j], MinDistSquared[i,j]):
+    #                 return True
+    #     return False
     
-    def is_done(self):
-        if self.current_step==127:
-            done = True
-        else:
-            done = False
-        return done
-        
-    
+
+# myEnv = spaceEnv()
+# check_env(myEnv)
+# print('done')
