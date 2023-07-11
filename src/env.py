@@ -1,9 +1,6 @@
 from gymnasium import Env
 from gymnasium.spaces import Box
 
-from matplotlib import pyplot as plt
-
-
 import random
 import const as c
 
@@ -14,13 +11,20 @@ from typing import List, Optional, Any
 
 class spaceEnv(Env):
     """
-    Observation space is a box of shape (5, 4).
+    Observation space is a box of shape (8, 4).
     Columns represent:
-    0: Polar postiion r
-    1: Polar position theta,
-    2: Distance to target position
-    3: Distance to the object currently being moved. For the current object this is set to negative.
+    0: Previous position r
+    1: Previus position theta,
+    2: Current position r
+    3: Current position theta
+    4: Target position r
+    5: Target Position theta
+    6: Distance to target position
+    7: Distance to the object currently being moved. For the current object this is set to negative.
     Rows represent objects. Current object in 0, and the rest in order of closeness.
+
+    Positions are in polar coordinates. Previous and current position will be the same for the objects 
+    not being moved this turn.
 
     Action space is a box of shape (2, ) with values between -1 and 1. It is recommended to normalize action space,
     so even though we mever want the model to actually pick a negative value for the theta of the polar coordinates,
@@ -44,6 +48,7 @@ class spaceEnv(Env):
         self.object_positions: dict[str, dict[str, np.float32]] = self.get_starting_positions()
         self.pop_list = self.get_object_list() # Dummy prop to be replaced in final implementation 
         self.object_count: int = 0
+        self.current_object: str = "sun"
     
         # Define action space
         self.action_space = Box(
@@ -53,7 +58,7 @@ class spaceEnv(Env):
         self.render_mode = render_mode
 
         # Define observation space 
-        self.observation_space = Box(low=-2830.0, high=2830.0, shape=(5, 4), dtype=np.float32)
+        self.observation_space = Box(low=-2830.0, high=2830.0, shape=(9, 4), dtype=np.float32)
         self.horizon = c.HORIZON_RADIUS      
         
     def step(self, action: np.ndarray):
@@ -75,22 +80,21 @@ class spaceEnv(Env):
         incremented by one, and the targets of each body is updated.  
         """
 
-        current_object = self.choose_current_object()
-        nearest_four = self.calculate_nearest_four(current_object=current_object)
+        self.current_object = self.choose_current_object()
+        nearest_four = self.calculate_nearest_four()
 
-        target_position_dist = self.object_positions[current_object]["target_position_dist"]
-        target_position_theta = self.object_positions[current_object]["target_position_theta"]
-
-        new_position = self.calc_new_position(action=action, current_object=current_object)
+        target_position_dist = self.object_positions[self.current_object]["target_position_dist"]
+        target_position_theta = self.object_positions[self.current_object]["target_position_theta"]
 
         current_position = [
-            self.object_positions[current_object]["position_polar_dist"],
-            self.object_positions[current_object]["position_polar_theta"]
+            self.object_positions[self.current_object]["position_polar_dist"],
+            self.object_positions[self.current_object]["position_polar_theta"]
         ]
 
+        new_position = self.calc_new_position(action=action, old_position=current_position)
         distance_to_target = self.cartesian_distance(
-                            current_position_dist=current_position[0],
-                            current_position_theta=current_position[1],
+                            current_position_dist=new_position[0],
+                            current_position_theta=new_position[1],
                             new_position_dist=target_position_dist,
                             new_position_theta=target_position_theta
                         )
@@ -98,6 +102,7 @@ class spaceEnv(Env):
         reward = self.calc_reward(distance_to_target=distance_to_target, polar_dist=new_position[0])
         
         obs = self.observation(
+            old_position=current_position,
             new_position=new_position,
             distance_to_target=distance_to_target,
             nearest_objects=nearest_four
@@ -108,7 +113,7 @@ class spaceEnv(Env):
         truncated = (True if new_position[0] > self.horizon else False)
 
         info = {
-            "current_body": current_object,
+            "current_body": self.current_object,
             "current_position": current_position,
             "new_position": new_position,
             "target_position": [target_position_dist, target_position_theta],
@@ -118,7 +123,6 @@ class spaceEnv(Env):
         }
 
         self.update_position(
-            current_object=current_object,
             new_position=new_position,
             distance_to_target=distance_to_target
             )
@@ -202,7 +206,7 @@ class spaceEnv(Env):
         self.object_count+=1
         return obj
     
-    def calculate_nearest_four(self, current_object: str) -> List[str]:
+    def calculate_nearest_four(self) -> List[str]:
         """For now this is a dummy method, that returns four random planets from the object list.
         
         When the full implementation is done, this method should identify the four bodies closest to
@@ -212,7 +216,7 @@ class spaceEnv(Env):
 
         while len(nearest) < 4:
             body = random.sample(self.objects, 1)
-            if body not in nearest:
+            if body not in nearest and body != self.current_object:
                 nearest.append(body)
         
         return nearest
@@ -230,16 +234,15 @@ class spaceEnv(Env):
     
     def update_position(
             self,
-            current_object: str,
             new_position: List[np.float32],
             distance_to_target: np.float32):
         """
         Updates the current_object's position in self.object_positions based on the new position
         calculated in step().
         """
-        self.object_positions[current_object]["position_polar_dist"] = new_position[0]
-        self.object_positions[current_object]["position_polar_theta"] = new_position[1]
-        self.object_positions[current_object]["distance_to_target"] = distance_to_target
+        self.object_positions[self.current_object]["position_polar_dist"] = new_position[0]
+        self.object_positions[self.current_object]["position_polar_theta"] = new_position[1]
+        self.object_positions[self.current_object]["distance_to_target"] = distance_to_target
 
     def update_targets(self):
         """
@@ -250,9 +253,13 @@ class spaceEnv(Env):
             self.object_positions[entry[1]]["target_position_dist"] = self.position_data_polar[self.current_round][entry[0]][0]
             self.object_positions[entry[1]]["target_position_theta"] = self.position_data_polar[self.current_round][entry[0]][1]
 
-    def calc_new_position(self, action: np.ndarray, current_object: str) -> List[np.float32]:
-        new_dist = np.float32(self.object_positions[current_object]["position_polar_dist"] + action[0]*250)
-        new_theta = np.float32(self.object_positions[current_object]["position_polar_theta"] + action[1]*2*np.pi)
+    def calc_new_position(
+            self, 
+            action: np.ndarray, 
+            old_position: List[np.float32]
+            ) -> List[np.float32]:
+        new_dist = np.float32(old_position[0] + action[0]*250)
+        new_theta = np.float32(old_position[1] + action[1]*0.1*np.pi)
         return [new_dist, new_theta]
     
   
@@ -290,6 +297,7 @@ class spaceEnv(Env):
 
     def observation(
             self, 
+            old_position: List[np.float32],
             new_position: List[np.float32],  
             distance_to_target: np.float32,
             nearest_objects:List[str]
@@ -301,13 +309,17 @@ class spaceEnv(Env):
         """
 
         # initializing a matrix of zeros in float32 to hold observations
-        obs = self.zeros_in_32()
+        obs = np.zeros(shape=(9, 4), dtype=np.float32)
 
         # populating matrix with current objects updated data
-        obs[0, 0] = np.float32(new_position[0])
-        obs[0, 1] = np.float32(new_position[1])
-        obs[0, 2] = np.float32(distance_to_target)
-        obs[0, 3] = np.float32(-99.0)
+        obs[0, 0] = old_position[0],
+        obs[0, 1] = old_position[1],
+        obs[0, 2] = new_position[0],
+        obs[0, 3] = new_position[1],
+        obs[0, 4] = self.object_positions[self.current_object]["target_position_dist"],
+        obs[0, 5] = self.object_positions[self.current_object]["target_position_theta"],
+        obs[0, 6] = np.float32(distance_to_target)
+        obs[0, 7] = np.float32(-99.0)
 
         # populating matrix with objects that have not been moved
         for object in enumerate(nearest_objects):
@@ -315,47 +327,36 @@ class spaceEnv(Env):
             dist = np.float32(self.object_positions[object[1][0]]["position_polar_dist"])
             theta = np.float32(self.object_positions[object[1][0]]["position_polar_theta"])
 
-            obs[row, 0] = np.float32(dist)
-            obs[row, 1] = np.float32(theta)
+            obs[row, 0] = dist
+            obs[row, 1] = theta
             obs[row, 2] = np.float32(self.object_positions[object[1][0]]["distance_to_target"])
 
-            distance_to_current = self.cartesian_distance(
+            distance_to_current_object = self.cartesian_distance(
                                         current_position_dist=dist,
                                         current_position_theta=theta,
                                         new_position_dist=np.float32(new_position[0]),
                                         new_position_theta=np.float32(new_position[1])
                                     )
-            obs[row, 3] = np.float32(distance_to_current)
+            obs[row, 3] = distance_to_current_object
 
         return np.array(obs)
 
     def reset_obs(self) -> np.ndarray:
-        obs = self.zeros_in_32()
+        obs = np.zeros(shape=(5, 4), dtype=np.float32)
 
-        for obj in enumerate(self.objects[0:5]):
+        for obj in enumerate(self.objects[0:8]):
             obs[obj[0], 0] = np.float32(self.object_positions[obj[1]]["position_polar_dist"])
             obs[obj[0], 1] = np.float32(self.object_positions[obj[1]]["position_polar_theta"])
-            obs[obj[0], 2] = np.float32(0.0)
-            obs[obj[0], 3] = np.float32(-99.0)
+            obs[obj[0], 2] = np.float32(self.object_positions[obj[1]]["position_polar_dist"])
+            obs[obj[0], 3] = np.float32(self.object_positions[obj[1]]["position_polar_theta"])
+            obs[obj[0], 2] = np.float32(self.object_positions[obj[1]]["target_position_dist"])
+            obs[obj[0], 3] = np.float32(self.object_positions[obj[1]]["target_position_theta"])
+            obs[obj[0], 6] = np.float32(0.0)
+            obs[obj[0], 7] = np.float32(-99.0)
 
         return np.array(obs)
 
-    @staticmethod
-    def zeros_in_32() -> np.ndarray:
-        """
-        Initializes a matrix of zeros in float32. 
-        
-        Cannot use np.zeros as it initializes in float 64 whoch messes up the env.
-        """
-        return np.array(
-            [
-                [np.float32(0), np.float32(0), np.float32(0), np.float32(0)], 
-                [np.float32(0), np.float32(0), np.float32(0), np.float32(0)],            
-                [np.float32(0), np.float32(0), np.float32(0), np.float32(0)],            
-                [np.float32(0), np.float32(0), np.float32(0), np.float32(0)],            
-                [np.float32(0), np.float32(0), np.float32(0), np.float32(0)],            
-                    ]
-        )
+   
     def get_starting_positions(self) -> dict[str, dict[str, np.float32]]:
         return {
             "sun":{ 
