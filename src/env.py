@@ -9,7 +9,7 @@ from typing import List, Optional, Any, Tuple
 
 class spaceEnv(Env):
     """
-    Observation space is a box of shape (13,).
+    Observation space is a box of shape (17,).
     Columns represent:
     0: Current position r
     1: Current position theta
@@ -462,7 +462,7 @@ class spaceEnv(Env):
     
     @staticmethod
     def polar_to_cartesian(dist: np.float32, theta: np.float32) -> np.ndarray:
-        x = np.float32(dist*np.cos(theta))
-        y = np.float32(dist*np.sin(theta))
+        x = np.float32(dist*np.sin(theta))
+        y = np.float32(dist*np.cos(theta))
 
         return np.array([x, y])
