@@ -113,21 +113,21 @@ class spaceEnv(Env):
 
         truncated = (True if -c.BOARD_RADIUS < new_position[0] > c.BOARD_RADIUS else False)
 
+        
+
+        self.update_current_round()
+        self.update_all_positions()
+        self.update_position_dict()
+
         info = {
             "current_body": self.current_object,
             "current_position": (current_position_dist, current_position_theta),
             "new_position": new_position,
             "target_position": (target_position_dist, target_position_theta),
+            "distance_to_target": self.state[4],
             "reward": reward,
-            "object_count": self.object_count,
             "current_step": self.current_round
         }
-
-        self.update_position_dict()
-
-        self.update_current_round()
-        self.update_all_positions()
-
         return self.state, reward, terminated, truncated, info
 
     def reset(self, seed: Optional[int]=None, options: Optional[dict[str, Any]]=None):
@@ -331,7 +331,7 @@ class spaceEnv(Env):
         """
         self.object_positions[self.current_object]["position_polar_dist"] = self.state[0]
         self.object_positions[self.current_object]["position_polar_theta"] = self.state[1]
-        self.object_positions[self.current_object]["distance_to_target"] = self.state[2]
+        self.object_positions[self.current_object]["distance_to_target"] = self.state[4]
 
     def update_all_positions(self):
         """
@@ -339,11 +339,13 @@ class spaceEnv(Env):
         To be run when updating round. 
         """
         for entry in enumerate(self.object_positions.keys()):
-            self.object_positions[entry[1]]["target_position_dist"] = self.position_data_polar[self.current_round][entry[0]][0]
-            self.object_positions[entry[1]]["target_position_theta"] = self.position_data_polar[self.current_round][entry[0]][1]
+            # update all target positions
+            self.object_positions[entry[1]]["target_position_dist"] = self.position_data_polar[self.current_round+1][entry[0]][0]
+            self.object_positions[entry[1]]["target_position_theta"] = self.position_data_polar[self.current_round+1][entry[0]][1]
+            # update current position of all objects except current object
             if entry[1] != self.current_object:
-                self.object_positions[entry[1]]["target_position_dist"] = self.position_data_polar[self.current_round][entry[0]][0]
-                self.object_positions[entry[1]]["target_position_theta"] = self.position_data_polar[self.current_round][entry[0]][1]
+                self.object_positions[entry[1]]["position_polar_dist"] = self.position_data_polar[self.current_round][entry[0]][0]
+                self.object_positions[entry[1]]["position_polar_theta"] = self.position_data_polar[self.current_round][entry[0]][1]
     
     def calc_new_position(
             self, 
