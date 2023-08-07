@@ -74,7 +74,7 @@ galacticcenter = {
 
 planets = (sun, jupiter, neptune, saturn, uranus, moon, mercury, venus, mars, galacticcenter) # stellanova,
 
-objects = ["sun", "jupiter", "neptune", "saturn", "uranus", "moon", "mercury", "venus", "mars", "galacticcenter"]
+objects = ["sun", "jupiter", "neptune", "saturn", "uranus", "moon", "mercury", "venus", "mars", "stellanova"]
 
 NUM_PLANETS = len(planets)
 

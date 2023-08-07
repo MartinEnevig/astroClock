@@ -1,7 +1,13 @@
 import os
-from stable_baselines3 import PPO
 from env import spaceEnv
+
+from gymnasium.wrappers import flatten_observation
+
+from stable_baselines3 import PPO, SAC
+from stable_baselines3.common.vec_env import VecFrameStack, DummyVecEnv
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.env_checker import check_env
+
 
 env =spaceEnv(render_mode=None)
 
